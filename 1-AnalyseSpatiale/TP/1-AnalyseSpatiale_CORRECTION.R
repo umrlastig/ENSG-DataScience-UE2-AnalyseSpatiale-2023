@@ -95,21 +95,37 @@ regions <- st_read(dsn='data/regions/',layer='regions_2015_metropole_region')
 
 
 #  - voir les drivers disponibles (formats de fichiers)
-
+st_drivers()
 
 
 # - plot point moyen uniquement
-
+g=ggplot(data=wmean,aes(x=x,y=y,col=date))
+g+geom_point()
 
 
 #  - "carte" avec point moyen et regions
+g=ggplot(data=regions)
+g+geom_sf(aes(fill=st_coordinates(st_centroid(regions))[,1]))+
+  geom_point(data=wmean,aes(x=x*100,y=y*100,col=date))
 
 
 # -  meme carte "zoomée"
+g=ggplot(data=regions[regions$RégION%in%c("Bourgogne et Franche-Comté","Centre"),])
+g+geom_sf()+geom_point(data=wmean,aes(x=x*100,y=y*100,col=date))
 
 
 
 #  - distance type ponderée
+wsigma = apply(populations,MARGIN = 2,FUN = function(pop){
+  currenttotalpop = sum(pop)
+  wmeanx = sum(pop*coords$x)/currenttotalpop
+  wmeany = sum(pop*coords$y)/currenttotalpop
+  sigma = sqrt(sum(pop*((coords$x - wmeanx)^2 + (coords$y - wmeany)^2))/currenttotalpop)
+  return(sigma)
+}
+)
+
+ggplot(data=data.frame(date=dates$X1,sigma=wsigma),aes(x=date,y=sigma))+geom_line()
 
 
 
@@ -120,10 +136,33 @@ regions <- st_read(dsn='data/regions/',layer='regions_2015_metropole_region')
 library(ICSNP)
 
 #  - point median
+spmedian = spatial.median(coords[,c("x","y")])
+
+ggplot()+geom_point(data=wmean,aes(x=x*100,y=y*100,col=date))+
+  geom_point(data=data.frame(x=spmedian[1]*100,y=spmedian[2]*100),aes(x=x,y=y),color='red',shape=3)
 
 
 #  (difficile) - point median "pondéré" ?
-#  -> utiliser une technique type bootstrap en générant des points synthétiques en quantité proportionelle aux populations
+#  -> utiliser une technique type bootstrap en générant des points synthétiques
+#      en quantité proportionelle aux populations
+wspmedians=data.frame()
+for(date in as.character(dates$X1)){
+  synthpoints=coords[,c("x","y")]
+  for(i in 1:nrow(coords)){
+    addpoints=matrix(data=jitter(rep(unlist(c(coords[i,c("x","y")])), floor(populations[i,date]/100)),amount=100),ncol=2,byrow = T)
+    colnames(addpoints)=c("x","y")
+    synthpoints=rbind(synthpoints,addpoints)
+  }
+  show(dim(synthpoints))
+  wspmedian = spatial.median(synthpoints)
+  show(wspmedian)
+  wspmedians=rbind(wspmedians,wspmedian)
+}
+wspmedians$date=dates$X1
+names(wspmedians)<-c("x","y","date")
+
+ggplot()+geom_point(data=wmean,aes(x=x*100,y=y*100,col=date))+
+  geom_point(data=wspmedians,aes(x=x*100,y=y*100,col=date),shape=3)
 
 
 
