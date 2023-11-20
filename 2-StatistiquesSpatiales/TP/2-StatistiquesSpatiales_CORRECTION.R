@@ -71,10 +71,10 @@ w = nb2listw(depsnb)
 
 lm.morantest(lmglobal, w, alternative="two.sided")
 
-lm.LMtests(lmglobal, w, test="all")
+lm.LMtests(lmglobal, w, test=c("LMerr","LMlag"))
 
 # fonction weightMatrix du tp 1
-w=weightMatrix(deps, function(x){exp(-x/10000)})
+w=weightMatrix(deps, function(x){exp(-x/50000)})
 w = mat2listw(w)
 lm.morantest(lmglobal, w, alternative="two.sided")
 
@@ -92,14 +92,23 @@ lm.morantest(lmglobal, w, alternative="two.sided")
 
 library(GWmodel)
 
-
-
 # GWR simple
-
-
+gwbasic <- gwr.basic(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain,
+                     data=as(deps, "Spatial"),
+                     bw=10,
+                     kernel="bisquare",
+                     adaptive=TRUE)
+print(gwbasic)
 
 # cartographier coefficients
+coefs = gwbasic$SDF@data
 
+deps$localR2=coefs$Local_R2
+deps$residual = coefs$residual
+deps$alpha_population = coefs$PTOT
+mf_map(x = deps, var = "localR2", type = "choro")
+mf_map(x = deps, var = "residual", type = "choro")
+mf_map(x = deps, var = "alpha_population", type = "choro")
 
 # 2.2) Optimiser la bandwidth selon un critère d'AIC
 # bandwidth adaptative en nombre de voisins
