@@ -154,15 +154,30 @@ mf_map(x = deps, var = "alpha_revenu", type = "choro")
 library(spatialreg)
 
 # modèle de Durbin spatial
-
+depsnb = poly2nb(deps)
+w = nb2listw(depsnb)
+spatdurbin = lagsarlm(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain, data=d, w)
+summary(spatdurbin)
 
 # modèle avec erreur spatiale
-
-
+spaterror = errorsarlm(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain, data=d, w)
+summary(spaterror)
 
 # changer la matrice de poids, les spécifications des modèles
 
+bws=seq(from=1,to=100,by=5)
+aics = c()
+for(bw in 1000*bws){
+  show(bw)
+  w=mat2listw(weightMatrix(deps, function(x){exp(-x/bw)}))
+  spatdurbin = lagsarlm(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain, data=d, w)
+  aics = append(aics,AIC(spatdurbin))
+}
+bws[aics==min(aics)]
 
+w=mat2listw(weightMatrix(deps, function(x){exp(-x/26000)}))
+spatdurbin = lagsarlm(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain, data=d, w)
+summary(spatdurbin)
 
 #####
 ##  4 ) Regressions multi-niveaux
