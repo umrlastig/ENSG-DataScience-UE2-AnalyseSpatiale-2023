@@ -294,12 +294,18 @@ activityfiles = c(archi="Architecte.gpkg",immo="Courtier_immobilier.gpkg",hotel=
                   college = "Collège.gpkg",enssup="Enseignement_Supérieur.gpkg",coiffeur="Salon_de_coiffure.gpkg",
                   comptable= "Comptable.gpkg",geometre="Géomètre.gpkg")
 
+
+aggregate_activity <- function(activitename,locfiles=activityfiles,locdeps=deps){
+  activite = st_transform(st_read(paste0("data/osmdata/",locfiles[[activitename]])),st_crs(locdeps))
+  aggractivite = st_join(activite, locdeps) %>% group_by(CODE_DEPT) %>% summarise(num = n())
+  aggractivite[[activitename]] = aggractivite$num
+  return(left_join(locdeps,as_tibble(aggractivite)[,c("CODE_DEPT",activitename)],by=c("CODE_DEPT"="CODE_DEPT")))
+}
+
+
 for(activitename in names(activityfiles)){
   show(activitename)
-  activite = st_transform(st_read(paste0("data/osmdata/",activityfiles[[activitename]])),st_crs(deps))
-  aggractivite = st_join(activite, deps) %>% group_by(CODE_DEPT) %>% summarise(num = n())
-  aggractivite[[activitename]] = aggractivite$num
-  deps=left_join(deps,as_tibble(aggractivite)[,c("CODE_DEPT",activitename)],by=c("CODE_DEPT"="CODE_DEPT"))
+  deps = aggregate_activity(activitename)
 }
 
 specialisation <- function(departements,activites,activitespec){
@@ -329,13 +335,50 @@ mf_map(x = deps, var = "specavocat", type = "choro")
 # 2.7) Calculer l'autocorrélation spatiale
 
 # - a la main (produits de matrices)
+weightMatrix<-function(layer,FUN){
+  d = units::drop_units(st_distance(st_centroid(layer)))
+  #w = exp(-d)/decay)
+  w = FUN(d)
+  diag(w)<-0
+  return(w)
+}
+
+spAutocorr<-function(x,w){
+  n=length(x)
+  cx = x - mean(x)
+  cxvec=matrix(cx,nrow=n,ncol=1)
+  normalization = n/(sum(w)*sum(cxvec*cxvec))
+  return(sum(((
+    matrix(data = rep(cx,n),ncol = n,nrow = n,byrow = FALSE)*w)%*%cxvec))*normalization)
+}
+
+w=weightMatrix(deps, function(x){exp(-x/10000)})
+
+spAutocorr(deps$coiffeur,w)
+
+# TODO debug
 
 #  - Moran avec le package spdep, fonction moran.test
 library(spdep)
 
-# - indice de geary
+depsnb = poly2nb(deps)
+w = nb2listw(depsnb)
 
+moran.test(deps$coiffeur,w,na.action = na.omit)
+
+# TODO from manual weight matrix
+
+
+# - indice de geary
+geary.test(deps$coiffeur,w)
 
 # - indice de Moran local (LISA)
+loccoiff = localmoran(deps$coiffeur,w)
+
+deps$loccoiff = loccoiff[,1]
+mf_map(x = deps, var = "loccoiff", type = "choro")
+
+# TODO carto categs
+#deps$categ = loccoiff@quadr
 
 
