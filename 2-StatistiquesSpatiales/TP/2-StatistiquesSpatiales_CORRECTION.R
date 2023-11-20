@@ -182,17 +182,27 @@ summary(spatdurbin)
 #####
 ##  4 ) Regressions multi-niveaux
 
-
 library(lme4)
 
 # modèle simple avec intercepts variables
-
+multiniv_intercept =
+  lmer(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain + (1 | NOM_REG),
+     data=d)
+summary(multiniv_intercept)
 
 # modèle simple avec coefficients variables
-
+multiniv_slopes =
+  lmer(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain +
+         (PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain | NOM_REG),
+       data=d)
+summary(multiniv_slopes)
 
 # comparer les modèles et en tester d'autres
-
+AIC(multiniv_intercept)
+AIC(multiniv_slopes)
 
 # comparaison à GWR et interprétation
+
+# TODO recuperer effets fixes
+
 
