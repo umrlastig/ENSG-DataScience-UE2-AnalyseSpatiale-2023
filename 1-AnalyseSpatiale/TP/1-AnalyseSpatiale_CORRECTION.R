@@ -149,7 +149,8 @@ wspmedians=data.frame()
 for(date in as.character(dates$X1)){
   synthpoints=coords[,c("x","y")]
   for(i in 1:nrow(coords)){
-    addpoints=matrix(data=jitter(rep(unlist(c(coords[i,c("x","y")])), floor(populations[i,date]/100)),amount=100),ncol=2,byrow = T)
+    addpoints=matrix(data=jitter(rep(unlist(c(coords[i,c("x","y")])), floor(populations[i,date]/100)),
+                                 amount=100),ncol=2,byrow = T)
     colnames(addpoints)=c("x","y")
     synthpoints=rbind(synthpoints,addpoints)
   }
@@ -188,24 +189,39 @@ library(sf)
 coiffeurs = st_read("data/osmdata/Salon_de_coiffure.gpkg")
 facs = st_read("data/osmdata/Enseignement_Supérieur.gpkg")
 
-st_read(dsn = 'data/regions/',layer = 'regions_2015_metropole_region')
+regions = st_read(dsn = 'data/regions/',layer = 'regions_2015_metropole_region')
+
+deps = read_sf(dsn='data/departements/',layer='DEPARTEMENT')
 
 # - systeme de coordonnees?
-
+st_crs(coiffeurs)
 
 #  - reprojection vers "EPSG:2154"
+coiffeurs = st_transform(coiffeurs,st_crs(deps))
+facs = st_transform(facs,st_crs(deps))
 
+regions = st_transform(regions,st_crs(deps))
 
-
-# 2.2) Calculer l'indice de plus proche voisin dans le cas d'un faible nombre de points (universités par exemple)
-
+# 2.2) Calculer l'indice de plus proche voisin dans le cas
+#      d'un faible nombre de points (universités par exemple)
+distancefacs = st_distance(facs)
+nearestneighdists = apply(distancefacs,1,function(r){min(r[r>0])})
+nndindex = 2*sqrt(nrow(facs)/sum(st_area(regions)))*mean(nearestneighdists)
 
 
 # 2.3) Cartographier la densité des points
+coiffeursmetro = st_filter(coiffeurs,regions)
+
+g=ggplot(regions)
+g+geom_sf()+geom_density2d_filled(
+  data=data.frame(st_coordinates(coiffeursmetro)),
+  mapping=aes(x=X,y=Y),alpha=0.5
+  )
 
 
 
-# 2.4) Charger le recensement 2017 au niveau départemental (niveau d'agrégation pour l'analyse statistique)
+# 2.4) Charger le recensement 2017 au niveau départemental
+#    (niveau d'agrégation pour l'analyse statistique)
 #   * fichier csv population data/insee/Departements.csv
 #   * fichier shapefile data/departements/DEPARTEMENT.shp
 #  puis agréger les aménités au niveau départemental
@@ -214,19 +230,56 @@ library(readr)
 library(dplyr)
 library(ggplot2)
 
+
 popdeps = read_delim('data/insee/Departements.csv', delim=";")
-deps = read_sf(dsn='data/departements/',layer='DEPARTEMENT')
+#deps = read_sf(dsn='data/departements/',layer='DEPARTEMENT')
 
 # - jointure
+deps = left_join(deps,popdeps[,c("CODDEP","PTOT")],
+                 by=c("CODE_DEPT"="CODDEP"))
 
 
 # 2.5) Corréler les effectifs à la population
+joincoiffeurs = st_join(coiffeursmetro, deps)
+aggrcoiffeurs = joincoiffeurs %>% group_by(CODE_DEPT) %>%
+  summarise(numcoiffeur = n(), population = PTOT[1])
 
+cor.test(aggrcoiffeurs$numcoiffeur,aggrcoiffeurs$population)
+cor.test(aggrcoiffeurs$numcoiffeur,aggrcoiffeurs$population,method = "spearman")
+
+
+ggplot(data.frame(logcoif=log(aggrcoiffeurs$numcoiffeur),logpop=log(aggrcoiffeurs$population)),aes(x=logpop,y=logcoif))+
+  geom_point()+geom_smooth()
+
+summary(lm(data=data.frame(logcoif=log(aggrcoiffeurs$numcoiffeur),logpop=log(aggrcoiffeurs$population)),
+           formula = logcoif~logpop
+))
+summary(lm(data=data.frame(coif=aggrcoiffeurs$numcoiffeur,pop=aggrcoiffeurs$population),
+           formula = coif~pop
+))
 
 
 
 
 # -  joindre les resultats au sf departements
+deps=left_join(deps,as_tibble(aggrcoiffeurs[,c("CODE_DEPT","numcoiffeur")]),
+               by=c("CODE_DEPT"="CODE_DEPT"))
+aggrfacs = st_join(facs, deps) %>% group_by(CODE_DEPT) %>%
+  summarise(numfacs = n(), population = PTOT[1])
+
+summary(lm(data=data.frame(logfacs=log(aggrfacs$numfacs),logpop=log(aggrfacs$population)),
+           formula = logfacs~logpop
+))
+
+deps=left_join(deps,as_tibble(aggrfacs[,c("CODE_DEPT","numfacs")]),
+               by=c("CODE_DEPT"="CODE_DEPT"))
+
+# - cartes: package mapsf 
+library(mapsf)
+
+mf_map(x = deps, var = "numcoiffeur", type = "choro")
+
+mf_map(x = deps, var = "numfacs", type = "choro")
 
 
 
@@ -241,17 +294,36 @@ activityfiles = c(archi="Architecte.gpkg",immo="Courtier_immobilier.gpkg",hotel=
                   college = "Collège.gpkg",enssup="Enseignement_Supérieur.gpkg",coiffeur="Salon_de_coiffure.gpkg",
                   comptable= "Comptable.gpkg",geometre="Géomètre.gpkg")
 
+for(activitename in names(activityfiles)){
+  show(activitename)
+  activite = st_transform(st_read(paste0("data/osmdata/",activityfiles[[activitename]])),st_crs(deps))
+  aggractivite = st_join(activite, deps) %>% group_by(CODE_DEPT) %>% summarise(num = n())
+  aggractivite[[activitename]] = aggractivite$num
+  deps=left_join(deps,as_tibble(aggractivite)[,c("CODE_DEPT",activitename)],by=c("CODE_DEPT"="CODE_DEPT"))
+}
 
+specialisation <- function(departements,activites,activitespec){
+  counts = as_tibble(departements)[,activites]
+  counts[is.na(counts)]=0
+  localshare = counts[,activitespec] / rowSums(counts)
+  globalShare = sum(counts[,activitespec])/sum(counts)
+  return(localshare/globalShare)
+}
 
 
 #  - specialisation en ens sup parmi education
+deps$specfac = specialisation(deps,c("ecole","lycee","maternelle","primaire","college","enssup"),"enssup")[[1]]
+
+# - avocats parmi prof liberales
+deps$specavocat = specialisation(deps,c("archi","immo","avocats","notaires","comptable","geometre"),"avocats")[[1]]
 
 
-# - prof liberales
 
 # - cartographie
+mf_map(x = deps, var = "specfac", type = "choro")
 
-library(mapsf)
+mf_map(x = deps, var = "specavocat", type = "choro")
+
 
 
 # 2.7) Calculer l'autocorrélation spatiale
