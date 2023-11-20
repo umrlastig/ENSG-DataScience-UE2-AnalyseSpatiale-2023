@@ -379,6 +379,6 @@ deps$loccoiff = loccoiff[,1]
 mf_map(x = deps, var = "loccoiff", type = "choro")
 
 # TODO carto categs
-#deps$categ = loccoiff@quadr
+deps$categ = loccoiff@quadr
 
 
