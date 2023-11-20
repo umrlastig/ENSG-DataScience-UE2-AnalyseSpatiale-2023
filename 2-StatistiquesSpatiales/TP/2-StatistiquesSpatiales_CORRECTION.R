@@ -48,25 +48,35 @@ deps = left_join(deps,insee_filosofi[,c("CODGEO","MED20","PPEN20","PPAT20")],
 deps = left_join(deps,depdvf,by=c("CODE_DEPT"="code_departement"))
 deps = na.exclude(deps)
 
+d = st_drop_geometry(deps)
+
 # exploration des données: cartes
-
-
 
 # exploration des données: PCA / corrélations
 
 
 # modele lineaire non spatialise
-
+lmglobal = lm(prix~MED20+PPEN20+PPAT20+surface_bati+surface_terrain,data=d)
+summary(lmglobal)
 
 # cartographier résidus du modèle linéaire
-
-
+deps$global_residuals = lmglobal$residuals
+mf_map(x = deps, var = "global_residuals", type = "choro")
 
 
 # tests autocorrelation spatiale
+library(spdep)
+depsnb = poly2nb(deps)
+w = nb2listw(depsnb)
 
+lm.morantest(lmglobal, w, alternative="two.sided")
 
+lm.LMtests(lmglobal, w, test="all")
 
+# fonction weightMatrix du tp 1
+w=weightMatrix(deps, function(x){exp(-x/10000)})
+w = mat2listw(w)
+lm.morantest(lmglobal, w, alternative="two.sided")
 
 
 
