@@ -106,20 +106,46 @@ coefs = gwbasic$SDF@data
 deps$localR2=coefs$Local_R2
 deps$residual = coefs$residual
 deps$alpha_population = coefs$PTOT
+deps$alpha_revenu = coefs$MED20
+deps$alpha_retraite = coefs$PPEN20
+deps$alpha_patrimoine = coefs$PPAT20
 mf_map(x = deps, var = "localR2", type = "choro")
 mf_map(x = deps, var = "residual", type = "choro")
 mf_map(x = deps, var = "alpha_population", type = "choro")
+mf_map(x = deps, var = "alpha_revenu", type = "choro")
+mf_map(x = deps, var = "alpha_retraite", type = "choro")
+mf_map(x = deps, var = "alpha_patrimoine", type = "choro")
 
 # 2.2) Optimiser la bandwidth selon un critère d'AIC
 # bandwidth adaptative en nombre de voisins
+bwfullaic = bw.gwr(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain,
+                   data=as(deps, "Spatial"),
+                   approach="AIC",
+                   kernel="bisquare",
+                   adaptive=T)
 
-
+gwopt <- gwr.basic(prix~PTOT+MED20+PPEN20+PPAT20+surface_bati+surface_terrain,
+                     data=as(deps, "Spatial"),bw=bwfullaic,kernel="bisquare",
+                     adaptive=TRUE)
 
 # 2.3) Selection de modèle (méthode de "forward selection")
+gwselec = gwr.model.selection(DeVar = "prix",
+                              InDeVars = c("PTOT","MED20","PPEN20","PPAT20","surface_bati","surface_terrain"),
+                              data=as(deps, "Spatial"),bw = bwfullaic,
+                              approach="AIC", kernel="bisquare",adaptive=T)
+print(gwselec)
+aicc = gwselec[[2]][,3]
+gwselec[[1]][which(aicc==min(aicc))]
 
+gwopt <- gwr.basic(prix~PTOT+MED20+PPEN20+PPAT20+surface_terrain,
+                   data=as(deps, "Spatial"),bw=bwfullaic,kernel="bisquare",
+                   adaptive=TRUE)
+coefs = gwopt$SDF@data
 
-
-
+deps$alpha_population = coefs$PTOT
+deps$alpha_revenu = coefs$MED20
+mf_map(x = deps, var = "alpha_population", type = "choro")
+mf_map(x = deps, var = "alpha_revenu", type = "choro")
 
 
 #####
