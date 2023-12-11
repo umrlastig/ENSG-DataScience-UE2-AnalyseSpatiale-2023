@@ -211,52 +211,134 @@ mf_map(countries[!is.na(countries$fixed_from),], type="choro", var='fixed_from')
 
 
 #########
-# 2) Flux quotidiens en ile-de-france par mode de transport, issus de l'EGT 2010
-
+# 2) Flux quotidiens en Ile-de-france par mode de transport, issus de l'EGT 2010
+#  Récupérées depuis https://analytics.huma-num.fr/geographie-cites/aperitif/
+# (pas de doc propre; agrégées uniquement - l'EGT n'est pas ouverte)
 
 # Table des flux
-
-
-
+idfflows = readRDS('data/mobility/tabflows.Rds')
 
 # Fitter des modèles simples (pour chaque mode, pour l'ensemble des modes)
+summary(lm(log(FLOW)~log(DIST), data=idfflows))
 
+summary(lm(log(FLOW)~log(DIST), data=idfflows[idfflows$MODE=='NM',]))
+# -0.68937
 
+summary(lm(log(FLOW)~log(DIST), data=idfflows[idfflows$MODE=='TC',]))
+# -0.607988
+
+summary(lm(log(FLOW)~log(DIST), data=idfflows[idfflows$MODE=='VP',]))
+# -0.681978
 
 
 # Matrices de temps de trajet
-
-
-
+times = readRDS('data/mobility/listtimes.Rds')
 
 # jointure
-
-
+idfflows = left_join(idfflows, times$TC, by=c('ORI'='ORI','DES'='DES'))
+names(idfflows)[9] = "TIME_TC"
+idfflows = left_join(idfflows, times$VPM, by=c('ORI'='ORI','DES'='DES'))
+names(idfflows)[10] = "TIME_VPM"
+idfflows = left_join(idfflows, times$VPS, by=c('ORI'='ORI','DES'='DES'))
+names(idfflows)[11] = "TIME_VPS"
+idfflows$TIME_VP = (idfflows$TIME_VPM + idfflows$TIME_VPS)/2
 
 # Fitter des modèles prenant en compte la distance-temps réseau
+summary(lm(log(FLOW)~log(TIME_TC), data=idfflows[idfflows$MODE=='TC',]))
+
+summary(lm(log(FLOW)~log(TIME_VP), data=idfflows[idfflows$MODE=='VP',]))
+
+# Modele avec distance et distance temps
+summary(lm(log(FLOW)~log(TIME_TC)+log(DIST), data=idfflows[idfflows$MODE=='TC',]))
+
+summary(lm(log(FLOW)~log(TIME_VP)+log(DIST), data=idfflows[idfflows$MODE=='VP',]))
 
 
-# donnees socio-economiques (a l'IRIS): raffiner les modèles
 
+# donnees socio-economiques (à l'IRIS): raffiner les modèles
+# Ref :  Raimbault, J. (2017, November). Identification de causalités dans des données spatio-temporelles. In Spatial Analysis and GEOmatics 2017.
+#   (données socio-eco uniquement)
 
 
 # charger dans une liste
-
-
+socioeco <- mget(
+  load('data/mobility/socioeco.RData', envir=(temp <- new.env())), envir=temp)
 
 # garder seulement la population en 2011, aggreger à la commune, ajouter a la table des flux (origine), idem destination
+populations = socioeco$pops
+populations = populations[populations$year=="11",]
+populations$code_com = substr(populations$id,1, 5)
+populations_aggr = as_tibble(populations) %>% 
+  group_by(code_com) %>% summarise(population = sum(var,na.rm=T))
 
+# ajouter a la table des flux (origine)
+idfflows = left_join(idfflows,populations_aggr,by=c('ORI'='code_com'))
+names(idfflows)[13] = "POP_ORI"
+# idem destination
+idfflows = left_join(idfflows,populations_aggr,by=c('DES'='code_com'))
+names(idfflows)[14] = "POP_DES"
 
 # idem avec income et employment
+incomes = socioeco$incomes
+incomes = incomes[incomes$year=="11",]
+incomes$code_com = substr(incomes$id,1, 5)
+incomes_aggr = as_tibble(incomes) %>% group_by(code_com) %>% summarise(income = median(var,na.rm=T)) # revenu median
+idfflows = left_join(idfflows,incomes_aggr,by=c('ORI'='code_com'))
+names(idfflows)[15] = "INC_ORI"
+idfflows = left_join(idfflows,incomes_aggr,by=c('DES'='code_com'))
+names(idfflows)[16] = "INC_DES"
+
+employment = socioeco$employment
+employment_aggr = as_tibble(employment) %>% group_by(id) %>% summarise(employment = sum(var,na.rm=T))
+idfflows = left_join(idfflows,employment_aggr,by=c('ORI'='id'))
+names(idfflows)[17] = "EMP_ORI"
+idfflows = left_join(idfflows,employment_aggr,by=c('DES'='id'))
+names(idfflows)[18] = "EMP_DES"
 
 
 # Modele complet pour chaque mode
+full_gravity_tc = lm(data=idfflows[idfflows$MODE=='TC',],
+      log(FLOW)~log(TIME_TC)+log(POP_ORI)+log(POP_DES)+log(INC_ORI)+
+        log(INC_DES)+log(EMP_ORI)+log(EMP_DES)
+      )
+summary(full_gravity_tc)
 
+full_gravity_dist_tc = lm(data=idfflows[idfflows$MODE=='TC',],
+        log(FLOW)~log(TIME_TC)+log(DIST)+log(POP_ORI)+log(POP_DES)+log(INC_ORI)+
+          log(INC_DES)+log(EMP_ORI)+log(EMP_DES))
+summary(full_gravity_dist_tc)
 
+AIC(full_gravity_dist_tc) - AIC(full_gravity_tc)
 
-# Faire des modèles au niveau des IRIS
+# idem pour voiture
 
+full_gravity_vp = lm(data=idfflows[idfflows$MODE=='VP',],
+                     log(FLOW)~log(TIME_VP)+log(TIME_TC)+log(POP_ORI)+log(POP_DES)+log(INC_ORI)+
+                       log(INC_DES)+log(EMP_ORI)+log(EMP_DES)
+)
+summary(full_gravity_vp)
 
+full_gravity_dist_vp = lm(data=idfflows[idfflows$MODE=='VP',],
+      log(FLOW)~log(TIME_VP)+log(TIME_TC)+log(DIST)+log(POP_ORI)+
+        log(POP_DES)+log(INC_ORI)+log(INC_DES)+log(EMP_ORI)+log(EMP_DES))
+summary(full_gravity_dist_vp)
 
+AIC(full_gravity_dist_vp) - AIC(full_gravity_vp)
 
+# modele avec fonction exponentielle
+full_gravity_exp_vp = lm(data=idfflows[idfflows$MODE=='VP',],
+        log(FLOW)~TIME_VP+TIME_TC+log(DIST)+log(POP_ORI)+
+          log(POP_DES)+log(INC_ORI)+log(INC_DES)+log(EMP_ORI)+log(EMP_DES))
+summary(full_gravity_exp_vp)
+
+AIC(full_gravity_exp_vp) - AIC(full_gravity_vp)
+# -> moins bien que fonction puissance
+
+# Suggestions: 
+#  - selection de modeles avec generation automatique
+#  - application : scenarios sur
+#    * emplois
+#    * reseau de transport
+#    * coefficients: par exemple prix de l'essence pour la voiture
+#
 
