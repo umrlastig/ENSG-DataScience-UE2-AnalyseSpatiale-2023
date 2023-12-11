@@ -99,19 +99,39 @@ summary(modele_simple_dist)
 # Interpretation : coef significatif pour la distance, effet attendu (négatif), mais modèle au R2 quasi nul 
 
 # idem avec similarité, comparer
-
-
+modele_simple_sim = lm(log(weight)~log(sim),data=links)
+summary(modele_simple_sim)
 
 # essayer en ajoutant d'autres variables
 
+# -> distance et sim
+modele_simple_dsim = lm(log(weight)~log(sim)+log(distance),data=links)
+summary(modele_simple_dsim)
+
+# "vrai" modele gravitaire
+modele_gravitaire = lm(log(weight)~log(sim)+log(distance)+log(from_turnover)+
+                         log(to_turnover), data = links)
+summary(modele_gravitaire)
+
+# interaction distance-sim?
+#modele_gravitaire_int = lm(log(weight)~log(sim)+log(distance)+log(from_turnover)+
+#                         log(to_turnover)+log(sim)*log(distance), data = links)
+#summary(modele_gravitaire_int)
+# -> pas d'interaction
+
+# formulation exponentielle du modele gravitaire
+modele_gravitaire_exp = lm(log(weight)~sim+distance+log(from_turnover)+
+                         log(to_turnover), data = links)
+summary(modele_gravitaire_exp)
 
 
 # verifier la presence d'overfitting (fonction AIC)
-
+AIC(modele_gravitaire) - AIC(modele_simple_dsim)
 
 
 # déterminer le meilleur modèle en termes d'AIC
-
+sapply(list(modele_simple_dist, modele_simple_sim, modele_simple_dsim, 
+            modele_gravitaire, modele_gravitaire_exp), AIC)
 
 
 
@@ -119,19 +139,43 @@ summary(modele_simple_dist)
 #  -> utiliser des effets fixes
 
 # origin
-
+modele_gravitaire_originconstrained = 
+  lm(log(weight)~log(sim)+log(distance)+log(from_turnover)+
+                         log(to_turnover)+as.character(from_fua), data = links)
+summary(modele_gravitaire_originconstrained)
 
 
 # destination 
-
-
+modele_gravitaire_destinationconstrained = 
+  lm(log(weight)~log(sim)+log(distance)+log(from_turnover)+
+       log(to_turnover)+as.character(to_fua), data = links)
+summary(modele_gravitaire_destinationconstrained)
 
 
 # contrainte double
+modele_gravitaire_ODconstrained = 
+  lm(log(weight)~log(sim)+log(distance)+log(from_turnover)+
+       log(to_turnover)+as.character(to_fua)+as.character(from_fua), data = links)
+summary(modele_gravitaire_ODconstrained)
 
 
 
-# effets fixes pays origin / pays destination
+# effets fixes pays origin / pays destination -> "multi-niveau"
+modele_gravitaire_pays = lm(log(weight)~log(distance)+log(sim)+log(from_turnover)+
+                        log(to_turnover)+ from_country + to_country, data=links)
+summary(modele_gravitaire_pays)
+
+modele_gravitaire_pays_ODconstrained =
+  lm(log(weight)~log(distance)+log(sim)+log(from_turnover)+
+                log(to_turnover)+ from_country + to_country+
+                as.character(from_fua)+as.character(to_fua), data=links)
+summary(modele_gravitaire_pays_ODconstrained)
+
+sapply(list(modele_simple_dist, modele_simple_sim, modele_simple_dsim, 
+            modele_gravitaire, modele_gravitaire_exp,
+            modele_gravitaire_originconstrained, modele_gravitaire_destinationconstrained,
+            modele_gravitaire_ODconstrained, modele_gravitaire_pays,
+            modele_gravitaire_pays_ODconstrained) , AIC)
 
 
 
@@ -139,9 +183,31 @@ summary(modele_simple_dist)
 # 1.5) Modeles de poisson
 #  utiliser glm(...,family = poisson(link='log')) : generalized linear model
 #  ! pour Poisson, les poids doivent être entiers
+links$weight_integer = round(links$weight)
+gravity_poisson = glm(
+  formula = weight_integer~log(distance)+log(sim)+
+     log(from_turnover)+log(to_turnover)+ from_country + to_country,
+  data = links,
+  family = poisson(link='log')
+)
+
+summary(gravity_poisson)
+AIC(gravity_poisson)
+# ! aic lm et aic posson pas comparables
+
+1 - sum((links$weight_integer - fitted(gravity_poisson))^2)/sum((links$weight_integer - mean(links$weight_integer))^2)
 
 
+##
+# 1.6) Carto effets fixes
+fixed_from=coefficients(gravity_poisson)[grep(names(coefficients(gravity_poisson)),
+                                   pattern='from_country')]
+fixed_from_df = data.frame(fixed_from=fixed_from,
+                           country=substring(names(fixed_from), first=13))
+# noms pas forcément uniformisé avec la table sf countries (UK par exemple)
+countries = left_join(countries,fixed_from_df,by=c('NAME'='country'))
 
+mf_map(countries[!is.na(countries$fixed_from),], type="choro", var='fixed_from')
 
 
 #########
