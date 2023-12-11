@@ -41,6 +41,9 @@ library(mapsf)
 # 1.2) Cartographier la specialisation des aires urbaines
 
 
+# cartographier- la proportion de certains secteurs
+
+
 # - avec fond de carte pays https://www.naturalearthdata.com/downloads/110m-cultural-vectors/
 #  -> fichier data/pays/ne_110m_admin_0_countries.shp
 
@@ -110,6 +113,54 @@ activites = c("sectorB","sectorC","sectorM","sectorK","sectorG","sectorD","secto
 #  ! pour Poisson, les poids doivent être entiers
 
 
+
+
+
+#########
+# 2) Flux quotidiens en ile-de-france par mode de transport, issus de l'EGT 2010
+
+
+# Table des flux
+
+
+
+
+# Fitter des modèles simples (pour chaque mode, pour l'ensemble des modes)
+
+
+
+
+# Matrices de temps de trajet
+
+
+
+
+# jointure
+
+
+
+# Fitter des modèles prenant en compte la distance-temps réseau
+
+
+# donnees socio-economiques (a l'IRIS): raffiner les modèles
+
+
+
+# charger dans une liste
+
+
+
+# garder seulement la population en 2011, aggreger à la commune, ajouter a la table des flux (origine), idem destination
+
+
+# idem avec income et employment
+
+
+# Modele complet pour chaque mode
+
+
+
+# Faire des modèles au niveau des IRIS
 
 
 
